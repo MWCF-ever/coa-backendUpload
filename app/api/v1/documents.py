@@ -333,6 +333,22 @@ async def process_directory(
         
         # 使用配置中的PDF目录
         pdf_directory = getattr(settings, 'PDF_DIRECTORY', settings.UPLOAD_DIR)
+        os.makedirs(pdf_directory, exist_ok=True)
+
+            # 如果目录为空，提供上传提示
+        if not os.path.exists(pdf_directory):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"PDF directory not found: {pdf_directory}. Please upload PDF files to this directory."
+            )
+        
+        pdf_files = glob.glob(os.path.join(pdf_directory, "*.pdf"))
+        
+        if not pdf_files:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,  
+                detail=f"No PDF files found in directory: {pdf_directory}. Please upload PDF files first."
+            )
         
         if not os.path.exists(pdf_directory):
             os.makedirs(pdf_directory, exist_ok=True)
