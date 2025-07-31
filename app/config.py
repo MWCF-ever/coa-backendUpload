@@ -20,12 +20,12 @@ class Settings(BaseSettings):
     # API
     API_V1_PREFIX: str = "/api"
     
-    # Database - PostgreSQL
-    DB_HOST: str = "uw2-dataexe-db-d.cijvcub5gps8.us-west-2.rds.amazonaws.com"
+    # Database - 更新为新的数据库连接信息
+    DB_HOST: str = "bg-beone-db-d-1.cijvcub5gps8.us-west-2.rds.amazonaws.com"
     DB_PORT: int = 5432
-    DB_USER: str = "gps_dev_owner"
-    DB_PASSWORD: str = "V#9CFMYtS!m5iBNfE"
-    DB_NAME: str = "gps"
+    DB_USER: str = "aimta_dev_owner"
+    DB_PASSWORD: str = "SdBJ92Mr!TOXFJVOBcx"
+    DB_NAME: str = "aimta"
     DB_SCHEMA: str = "coa_processor"
     
     # Construct database URL
@@ -35,8 +35,8 @@ class Settings(BaseSettings):
     
     
     # File Upload
-    UPLOAD_DIR: str = "uploads"
-    PDF_DIRECTORY: str = "uploads/pdfs"  # 新增：PDF文件存放目录
+    UPLOAD_DIR: str = "/app/uploads"
+    PDF_DIRECTORY: str = "/app/uploads/pdfs"  # 容器中的绝对路径
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
     ALLOWED_FILE_TYPES: list[str] = [".pdf"]
 
@@ -76,7 +76,9 @@ class Settings(BaseSettings):
             return v
         return v.lower() in ("true", "1", "yes")    
 
+    # 更新CORS配置，添加服务器域名
     CORS_ORIGINS: List[str] = Field(default_factory=lambda: [
+        "https://beone-d.beigenecorp.net",
         "https://localhost:3000",
         "http://localhost:3000",
         "https://localhost:8000",
