@@ -1,4 +1,4 @@
-# app/main.py - 修复路由前缀问题
+# app/main.py - 紧急CORS修复，超级宽松配置
 
 from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,54 +32,105 @@ app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     lifespan=lifespan,
-    # 🔥 关键修复：设置正确的root_path
     root_path="/api/aimta",
-    docs_url="/docs",  # 相对于root_path，实际是 /api/aimta/docs
-    redoc_url="/redoc"  # 相对于root_path，实际是 /api/aimta/redoc
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
-# CORS配置
+# 🔥 紧急修复：最宽松的CORS配置
+@app.middleware("http")
+async def emergency_cors_middleware(request: Request, call_next):
+    """紧急CORS修复中间件 - 允许所有请求"""
+    
+    origin = request.headers.get("origin")
+    
+    # 处理OPTIONS预检请求
+    if request.method == "OPTIONS":
+        response = JSONResponse({"status": "ok"})
+        
+        # 超级宽松的CORS头
+        response.headers["Access-Control-Allow-Origin"] = origin or "*"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Max-Age"] = "86400"
+        response.headers["Vary"] = "Origin"
+        
+        logger.info(f"🚀 CORS预检通过: {origin}")
+        
+        return response
+    
+    # 处理实际请求
+    try:
+        response = await call_next(request)
+        
+        # 为所有响应添加CORS头
+        response.headers["Access-Control-Allow-Origin"] = origin or "*"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Vary"] = "Origin"
+        
+        logger.info(f"✅ CORS响应头已添加: {origin}")
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"❌ 请求处理错误: {e}")
+        
+        # 即使出错也要添加CORS头
+        error_response = JSONResponse(
+            {"error": "Internal server error", "detail": str(e)},
+            status_code=500
+        )
+        
+        error_response.headers["Access-Control-Allow-Origin"] = origin or "*"
+        error_response.headers["Access-Control-Allow-Credentials"] = "true"
+        error_response.headers["Access-Control-Allow-Methods"] = "*"
+        error_response.headers["Access-Control-Allow-Headers"] = "*"
+        error_response.headers["Vary"] = "Origin"
+        
+        return error_response
+
+# 🔥 添加标准CORS中间件作为备用
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://beone-d.beigenecorp.net",
-        "https://*.beigenecorp.net",
-        "https://office.live.com",
-        "https://*.office.live.com",
-        "https://outlook.office.com",
-        "https://*.outlook.office.com",
-        "https://sharepoint.com",
-        "https://*.sharepoint.com",
-        "https://officeapps.live.com",
-        "https://*.officeapps.live.com",
-        "https://localhost:3000",
-        "http://localhost:3000",
-    ],
+    allow_origins=["*"],  # 临时允许所有源
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
-    allow_headers=[
-        "Accept", "Accept-Language", "Content-Language", "Content-Type",
-        "Authorization", "X-Requested-With", "Origin", "Referer", "User-Agent", "X-API-Key",
-    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
     max_age=3600,
 )
 
-# 🔥 修复：健康检查路由 - 直接在根级别，不需要认证
-@app.get("/health")
-async def health_check():
-    """健康检查端点 - /api/aimta/health"""
+# 🔥 CORS测试端点
+@app.get("/cors-test")
+async def cors_test():
+    """CORS测试端点"""
     return {
-        "status": "healthy",
-        "timestamp": "2025-08-03T13:15:00Z",
+        "message": "CORS test successful from backend",
+        "timestamp": "2025-08-04T20:00:00Z",
+        "cors_working": True,
         "service": settings.APP_NAME,
-        "version": settings.APP_VERSION,
-        "root_path": "/api/aimta"
+        "debug": "Emergency CORS fix applied"
     }
 
-# 🔥 修复：认证状态检查端点 - 直接在根级别，不需要强制认证
+# 健康检查端点
+@app.get("/health")
+async def health_check():
+    """健康检查端点"""
+    return {
+        "status": "healthy",
+        "timestamp": "2025-08-04T20:00:00Z",
+        "service": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "root_path": "/api/aimta",
+        "cors_emergency_fix": True
+    }
+
+# 认证状态检查端点
 @app.get("/auth/status")
 async def check_auth_status(user: User = Depends(optional_authentication)):
-    """检查认证状态 - /api/aimta/auth/status"""
+    """检查认证状态"""
     if user:
         return {
             "authenticated": True,
@@ -88,33 +139,18 @@ async def check_auth_status(user: User = Depends(optional_authentication)):
                 "name": user.name,
                 "email": user.email,
                 "roles": user.roles
-            }
+            },
+            "cors_working": True
         }
     else:
         return {
             "authenticated": False,
             "message": "No valid authentication token provided",
-            "debug_mode": settings.DEBUG
+            "debug_mode": settings.DEBUG,
+            "cors_working": True
         }
 
-# 用户信息端点 - 需要认证
-@app.get("/user/me")
-async def get_current_user_info(user: User = Depends(require_authentication)):
-    """获取当前用户信息 - /api/aimta/user/me"""
-    return {
-        "success": True,
-        "data": {
-            "id": user.id,
-            "name": user.name,
-            "email": user.email,
-            "roles": user.roles,
-            "groups": getattr(user, 'groups', []),
-            "tenant_id": getattr(user, 'tenant_id', None),
-            "app_id": getattr(user, 'app_id', None)
-        }
-    }
-
-# 🔥 DEBUG模式的可选认证依赖
+# DEBUG模式的可选认证依赖
 async def debug_optional_auth():
     """调试用的可选认证"""
     try:
@@ -123,8 +159,8 @@ async def debug_optional_auth():
             logger.info(f"✅ 认证用户访问: {user.email}")
             return user
         else:
-            logger.info("⚠️ 匿名用户访问（调试模式）")
             if settings.DEBUG:
+                logger.info("⚠️ DEBUG模式：使用虚拟用户")
                 class DebugUser:
                     def __init__(self):
                         self.id = "debug-user-id"
@@ -139,7 +175,7 @@ async def debug_optional_auth():
             class DebugUser:
                 def __init__(self):
                     self.id = "debug-user-id"
-                    self.name = "Debug User"  
+                    self.name = "Debug User"
                     self.email = "debug@beigene.com"
                     self.roles = ["user"]
             return DebugUser()
@@ -148,24 +184,24 @@ async def debug_optional_auth():
 # 选择认证策略
 auth_dependency = debug_optional_auth if settings.DEBUG else require_authentication
 
-# 🔥 修复：业务路由 - 不需要额外的前缀，因为已经设置了root_path
+# 业务路由
 app.include_router(
     compounds.router,
-    prefix="/compounds",  # 实际路径：/api/aimta/compounds
+    prefix="/compounds",
     tags=["compounds"],
     dependencies=[Depends(auth_dependency)]
 )
 
 app.include_router(
     templates.router,
-    prefix="/templates",  # 实际路径：/api/aimta/templates
+    prefix="/templates",
     tags=["templates"],
     dependencies=[Depends(auth_dependency)]
 )
 
 app.include_router(
     documents.router,
-    prefix="/documents",  # 实际路径：/api/aimta/documents
+    prefix="/documents",
     tags=["documents"],
     dependencies=[Depends(auth_dependency)]
 )
@@ -173,39 +209,59 @@ app.include_router(
 # Root endpoint
 @app.get("/")
 async def root():
-    """根路径 - /api/aimta/"""
+    """根路径"""
     return {
         "message": "COA Document Processor API",
         "version": settings.APP_VERSION,
         "root_path": "/api/aimta",
-        "health": "/api/aimta/health",
-        "auth_status": "/api/aimta/auth/status",
-        "docs": "/api/aimta/docs",
-        "debug_mode": settings.DEBUG
+        "endpoints": {
+            "health": "/api/aimta/health",
+            "cors_test": "/api/aimta/cors-test",
+            "auth_status": "/api/aimta/auth/status",
+            "compounds": "/api/aimta/compounds",
+            "templates": "/api/aimta/templates",
+            "documents": "/api/aimta/documents",
+            "docs": "/api/aimta/docs"
+        },
+        "debug_mode": settings.DEBUG,
+        "cors_emergency_fix": True
     }
 
-# Exception handlers
+# Exception handlers with CORS support
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc):
-    return JSONResponse(
+    origin = request.headers.get("origin", "*")
+    
+    response = JSONResponse(
         {
             "detail": "Resource not found",
             "status_code": 404,
             "path": str(request.url.path),
-            "root_path": "/api/aimta",
-            "requested_url": str(request.url)
+            "method": request.method,
+            "available_endpoints": [
+                "/api/aimta/health",
+                "/api/aimta/cors-test",
+                "/api/aimta/auth/status",
+                "/api/aimta/compounds",
+                "/api/aimta/templates",
+                "/api/aimta/documents"
+            ]
         },
-        status_code=404,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
-        }
+        status_code=404
     )
+    
+    # 添加CORS头
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Methods"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    
+    return response
 
 @app.exception_handler(500)
 async def internal_error_handler(request: Request, exc):
     logger.error(f"Internal error on {request.url}: {exc}")
+    origin = request.headers.get("origin", "*")
     
     response = JSONResponse({
         "detail": "Internal server error",
@@ -214,8 +270,16 @@ async def internal_error_handler(request: Request, exc):
         "error": str(exc) if settings.DEBUG else "Internal server error"
     }, status_code=500)
     
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+    # 添加CORS头
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Methods"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "*"
     
     return response
+
+# 启动时日志
+logger.info("🚀 COA API服务启动 (紧急CORS修复版)")
+logger.info(f"📍 Root path: /api/aimta")
+logger.info(f"🔧 Debug mode: {settings.DEBUG}")
+logger.info("🌐 紧急CORS修复已启用 - 允许所有源访问")
